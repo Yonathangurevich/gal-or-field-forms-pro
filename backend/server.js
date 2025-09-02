@@ -1,4 +1,4 @@
-// backend/server.js - שרת מעודכן עם סיסמאות פשוטות
+// backend/server.js - שרת מעודכן עם תמיכה ב-Role
 
 const express = require('express');
 const cors = require('cors');
@@ -152,67 +152,93 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Login - Updated to support simple passwords
+// Login - עדכון לתמיכה ב-Role מ-Google Sheets
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    console.log('Login attempt:', username);
 
-    // Admin login
-    if (username === 'admin' && password === 'Admin123') {
-      const token = jwt.sign(
-        { id: 'admin-1', username: 'admin', role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-
-      return res.json({
-        success: true,
-        token,
-        user: { id: 'admin-1', username: 'admin', role: 'admin' }
-      });
-    }
-
-    // Agent login - check from Sheet1
-    const agents = await getSheetData('Sheet1!A:I');
+    // קרא את הנתונים מ-Sheet1 עם העמודה החדשה של Role
+    const agents = await getSheetData('Sheet1!A:J');
     
-    if (agents.length > 1) {
-      // Find agent by AgentCode (column 1)
-      const agent = agents.slice(1).find(row => 
-        row[1] === username  // AgentCode
-      );
-      
-      if (agent) {
-        // Check password - it's stored in column 4 (index 3)
-        // In real app, you should hash passwords
-        const storedPassword = agent[3] || agent[2]; // Try column 4 first, then column 3
-        
-        if (password === storedPassword || password === agent[1]) { // Allow login with code as password too
-          const token = jwt.sign(
-            { 
-              id: agent[0], 
-              username: agent[2], // Name
-              role: 'agent', 
-              agentCode: agent[1] 
-            },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-          );
-
-          return res.json({
-            success: true,
-            token,
-            user: { 
-              id: agent[0], 
-              username: agent[2], 
-              role: 'agent', 
-              agentCode: agent[1] 
-            }
-          });
-        }
-      }
+    if (!agents || agents.length <= 1) {
+      console.log('No agents found in sheet');
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    return res.status(401).json({ error: 'Invalid credentials' });
+    // הכותרות בשורה הראשונה
+    const headers = agents[0];
+    console.log('Headers:', headers);
+    
+    // מצא את האינדקסים של העמודות
+    // המבנה החדש: ID | Role | AgentCode | Name | Password | Phone | Email | Status | CreatedAt | CreatedBy
+    const columnIndices = {
+      id: 0,        // A - ID
+      role: 1,      // B - Role (עמודה חדשה!)
+      agentCode: 2, // C - AgentCode
+      name: 3,      // D - Name
+      password: 4,  // E - Password
+      phone: 5,     // F - Phone
+      email: 6,     // G - Email
+      status: 7,    // H - Status
+      createdAt: 8, // I - CreatedAt
+      createdBy: 9  // J - CreatedBy
+    };
+
+    // חפש את הסוכן לפי AgentCode
+    const agent = agents.slice(1).find(row => {
+      const agentCode = row[columnIndices.agentCode];
+      const status = row[columnIndices.status];
+      return agentCode === username && status === 'active';
+    });
+    
+    if (!agent) {
+      console.log('Agent not found or inactive');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // בדוק סיסמה
+    const storedPassword = agent[columnIndices.password];
+    if (password !== storedPassword) {
+      console.log('Invalid password');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // קבל את ה-Role (ברירת מחדל: agent)
+    const userRole = agent[columnIndices.role] || 'agent';
+    console.log('User role:', userRole);
+
+    // צור JWT token
+    const token = jwt.sign(
+      { 
+        id: agent[columnIndices.id],
+        username: agent[columnIndices.name],
+        role: userRole, // כולל את ה-Role!
+        agentCode: agent[columnIndices.agentCode]
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // החזר תגובה עם כל הפרטים
+    return res.json({
+      success: true,
+      token,
+      user: { 
+        id: agent[columnIndices.id],
+        ID: agent[columnIndices.id], // לתאימות
+        username: agent[columnIndices.name],
+        name: agent[columnIndices.name],
+        Name: agent[columnIndices.name], // לתאימות
+        role: userRole, // חשוב!
+        Role: userRole, // לתאימות
+        agentCode: agent[columnIndices.agentCode],
+        AgentCode: agent[columnIndices.agentCode], // לתאימות
+        phone: agent[columnIndices.phone],
+        email: agent[columnIndices.email]
+      }
+    });
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: error.message });
@@ -224,26 +250,27 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
 });
 
-// Get agents
+// Get agents - עדכון לקריאה עם Role
 app.get('/api/agents', authenticateToken, async (req, res) => {
   try {
-    const agents = await getSheetData('Sheet1!A:I');
+    const agents = await getSheetData('Sheet1!A:J');
     
     if (!agents || agents.length <= 1) {
       return res.json([]);
     }
 
-    // Convert to JSON with Password field
+    // המרה ל-JSON עם העמודה החדשה של Role
     const agentsData = agents.slice(1).map(row => ({
       ID: row[0] || '',
-      AgentCode: row[1] || '',
-      Name: row[2] || '',
-      Password: row[3] || '',  // Include password for display
-      Phone: row[4] || '',
-      Email: row[5] || '',
-      Status: row[6] || 'active',
-      CreatedAt: row[7] || '',
-      CreatedBy: row[8] || ''
+      Role: row[1] || 'agent', // עמודה חדשה!
+      AgentCode: row[2] || '',
+      Name: row[3] || '',
+      Password: row[4] || '',
+      Phone: row[5] || '',
+      Email: row[6] || '',
+      Status: row[7] || 'active',
+      CreatedAt: row[8] || '',
+      CreatedBy: row[9] || ''
     }));
 
     res.json(agentsData);
@@ -253,8 +280,7 @@ app.get('/api/agents', authenticateToken, async (req, res) => {
   }
 });
 
-// Create agent - Store simple password
-// Create agent - Store simple password and use AgentCode as login
+// Create agent - עדכון ליצירה עם Role
 app.post('/api/agents', authenticateToken, async (req, res) => {
   try {
     if (!sheets) {
@@ -264,23 +290,24 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
     const agentData = req.body;
     console.log('Creating agent:', agentData);
     
-    // Use AgentCode as ID if provided, otherwise generate
+    // השתמש ב-AgentCode כ-ID או צור חדש
     const agentId = agentData.AgentCode || ('AGT-' + Date.now());
     
-    // Create row with password in column 4
+    // יצירת שורה עם Role (ברירת מחדל: agent)
     const rowData = [
-      agentId,                    // ID - use AgentCode
-      agentData.AgentCode || agentId,  // AgentCode
-      agentData.Name || '',       // Name
-      agentData.Password || '1234',   // Password (simple, stored as-is)
-      agentData.Phone || '',      // Phone
-      agentData.Email || '',      // Email
-      agentData.Status || 'active', // Status
-      new Date().toISOString(),   // CreatedAt
-      req.user.username           // CreatedBy
+      agentId,                         // A - ID
+      agentData.Role || 'agent',      // B - Role (עמודה חדשה!)
+      agentData.AgentCode || agentId, // C - AgentCode
+      agentData.Name || '',            // D - Name
+      agentData.Password || '1234',   // E - Password
+      agentData.Phone || '',          // F - Phone
+      agentData.Email || '',          // G - Email
+      agentData.Status || 'active',   // H - Status
+      new Date().toISOString(),       // I - CreatedAt
+      req.user.username                // J - CreatedBy
     ];
 
-    await appendSheetData('Sheet1!A:I', [rowData]);
+    await appendSheetData('Sheet1!A:J', [rowData]);
 
     res.json({
       success: true,
@@ -300,20 +327,20 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete agent
+// Delete agent - עדכון לעמודת Status החדשה
 app.delete('/api/agents/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    const agents = await getSheetData('Sheet1!A:I');
+    const agents = await getSheetData('Sheet1!A:J');
     const agentIndex = agents.slice(1).findIndex(row => row[0] === id);
     
     if (agentIndex === -1) {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    // Mark as deleted in Status column (index 6)
-    const range = `Sheet1!G${agentIndex + 2}`;
+    // סמן כ-DELETED בעמודת Status (עכשיו בעמודה H - אינדקס 7)
+    const range = `Sheet1!H${agentIndex + 2}`;
     await updateSheetData(range, [['DELETED']]);
 
     res.json({
@@ -435,8 +462,13 @@ async function startServer() {
 ║  📊 Google Sheets: ${initialized ? 'Connected ✅' : 'Failed ❌'}      ║
 ╠════════════════════════════════════════╣
 ║  Login Credentials:                    ║
-║  Admin: admin / Admin123               ║
+║  Admin: use AgentCode from Sheet       ║
 ║  Agent: [AgentCode] / [Password]       ║
+╠════════════════════════════════════════╣
+║  Sheet Structure (Sheet1):             ║
+║  A:ID | B:Role | C:AgentCode | D:Name  ║
+║  E:Password | F:Phone | G:Email        ║
+║  H:Status | I:CreatedAt | J:CreatedBy  ║
 ╚════════════════════════════════════════╝
     `);
     
