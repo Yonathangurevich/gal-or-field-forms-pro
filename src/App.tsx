@@ -1,4 +1,4 @@
-// src/App.tsx - Updated with PWA and Notifications
+// src/App.tsx - Updated with Role-based Views
 
 import React, { useState, useEffect } from 'react';
 
@@ -92,7 +92,7 @@ const api = {
   }
 };
 
-// Login Component
+// Login Component (שאר אותו דבר)
 function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -239,8 +239,158 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
   );
 }
 
-// Main Dashboard
-function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
+// Component פשוט לסוכנים
+function AgentView({ user, onLogout }: any) {
+  const [forms, setForms] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  
+  useEffect(() => {
+    loadAgentForms();
+    setupNotifications();
+    const interval = setInterval(loadAgentForms, 30000); // רענון כל 30 שניות
+    return () => clearInterval(interval);
+  }, []);
+
+  const setupNotifications = async () => {
+    const permission = await requestNotificationPermission();
+    setNotificationsEnabled(permission);
+  };
+  
+  const loadAgentForms = async () => {
+    try {
+      const response = await api.call('/forms');
+      // סנן רק טפסים של הסוכן הנוכחי
+      const myForms = response.filter((f: any) => 
+        f.AgentID === user.agentCode || 
+        f.AgentID === user.id ||
+        f.AgentID === user.ID
+      );
+      setForms(myForms);
+      
+      // הודעה על טפסים חדשים
+      const newForms = myForms.filter((f: any) => f.Status === 'חדש');
+      if (newForms.length > 0 && notificationsEnabled) {
+        showNotification('טופס חדש!', `יש לך ${newForms.length} טפסים חדשים למילוי`);
+      }
+    } catch (error) {
+      console.error('Error loading forms:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  return (
+    <div style={{ minHeight: '100vh', background: '#f5f6fa', fontFamily: 'Arial, sans-serif' }}>
+      <header style={{
+        background: 'white',
+        padding: '20px 30px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'normal' }}>
+            שלום {user.username || user.Name}
+          </h2>
+          <p style={{ margin: '5px 0 0', color: '#666', fontSize: '14px' }}>
+            סוכן {notificationsEnabled ? '🔔' : '🔕'}
+          </p>
+        </div>
+        <button onClick={onLogout} style={{
+          padding: '8px 16px',
+          background: '#f44336',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer'
+        }}>
+          יציאה
+        </button>
+      </header>
+      
+      <div style={{ padding: '30px' }}>
+        <div style={{
+          background: 'white',
+          borderRadius: '8px',
+          padding: '20px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.08)'
+        }}>
+          <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>הטפסים שלך</h3>
+          
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+              טוען טפסים...
+            </div>
+          ) : forms.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+              אין טפסים זמינים כרגע
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '15px' }}>
+              {forms.map(form => (
+                <div key={form.ID} style={{
+                  padding: '20px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '8px',
+                  background: form.Status === 'חדש' ? '#fff3e0' : '#fff'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 10px', fontSize: '16px' }}>
+                        {form.FormType || 'טופס כללי'}
+                      </h4>
+                      <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
+                        לקוח: {form.ClientName || 'טופס כללי'}
+                      </p>
+                      <p style={{ margin: '5px 0', fontSize: '14px' }}>
+                        סטטוס: 
+                        <span style={{
+                          marginRight: '10px',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          background: form.Status === 'חדש' ? '#ff9800' : 
+                                     form.Status === 'בטיפול' ? '#2196f3' : '#4caf50',
+                          color: 'white'
+                        }}>
+                          {form.Status}
+                        </span>
+                      </p>
+                    </div>
+                    {form.FormURL && (
+                      <a 
+                        href={form.FormURL} 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '10px 20px',
+                          background: '#4caf50',
+                          color: 'white',
+                          textDecoration: 'none',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        מלא טופס
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Admin Dashboard - הקוד המקורי שלך
+function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
+  // כל הקוד המקורי של Dashboard נשאר כמו שהוא
   const [activeTab, setActiveTab] = useState<'agents' | 'forms' | 'status'>('agents');
   const [agents, setAgents] = useState<any[]>([]);
   const [forms, setForms] = useState<any[]>([]);
@@ -359,6 +509,7 @@ function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
     );
   }
 
+  // המשך הקוד המקורי של Dashboard
   return (
     <div style={{ minHeight: '100vh', background: '#f5f6fa', fontFamily: 'Arial, sans-serif' }}>
       {/* Header */}
@@ -371,7 +522,7 @@ function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
         alignItems: 'center'
       }}>
         <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 'normal' }}>
-          Field Forms Pro
+          Field Forms Pro - ניהול
         </h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <button
@@ -458,7 +609,7 @@ function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
         </button>
       </div>
 
-      {/* Content */}
+      {/* Content - כל התוכן המקורי נשאר */}
       <div style={{ padding: '30px' }}>
         {activeTab === 'agents' && (
           <div>
@@ -737,6 +888,17 @@ function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
   );
 }
 
+// Main Dashboard - מכריע לפי תפקיד
+function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
+  // אם זה סוכן - הצג רק טפסים
+  if (user.role === 'agent') {
+    return <AgentView user={user} onLogout={onLogout} />;
+  }
+  
+  // אם זה אדמין - הצג הכל
+  return <AdminDashboard user={user} onLogout={onLogout} />;
+}
+
 // Main App
 function App() {
   const [user, setUser] = useState<any>(null);
@@ -779,6 +941,4 @@ function App() {
   }} />;
 }
 
-
 export default App;
-
