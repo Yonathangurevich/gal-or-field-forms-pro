@@ -260,12 +260,20 @@ function AgentView({ user, onLogout }: any) {
   const loadAgentForms = async () => {
     try {
       const response = await api.call('/forms');
-      // סנן רק טפסים של הסוכן הנוכחי
-      const myForms = response.filter((f: any) => 
-        f.AgentID === user.agentCode || 
-        f.AgentID === user.id ||
-        f.AgentID === user.ID
-      );
+      // סנן רק טפסים של הסוכן הנוכחי - בדוק מול כל השדות האפשריים
+      const myForms = response.filter((f: any) => {
+        // בדוק את כל האפשרויות של ID הסוכן
+        return f.AgentID === user.username || 
+               f.AgentID === user.agentCode || 
+               f.AgentID === user.AgentCode ||
+               f.AgentID === user.id ||
+               f.AgentID === user.ID ||
+               f.AgentID === user.Id;
+      });
+      
+      console.log('User info:', user);
+      console.log('Found forms for agent:', myForms.length);
+      
       setForms(myForms);
       
       // הודעה על טפסים חדשים
@@ -325,7 +333,9 @@ function AgentView({ user, onLogout }: any) {
             </div>
           ) : forms.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-              אין טפסים זמינים כרגע
+              <div style={{ fontSize: '48px', marginBottom: '20px' }}>📋</div>
+              <h3 style={{ margin: '0 0 10px' }}>אין משימות חדשות</h3>
+              <p style={{ margin: 0 }}>כרגע אין טפסים למילוי. נעדכן אותך כשיגיעו טפסים חדשים.</p>
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '15px' }}>
@@ -890,11 +900,19 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
 
 // Main Dashboard - מכריע לפי תפקיד
 function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
-  // בדוק אם זה admin לפי AgentCode או username
+  // בדוק אם זה admin - רק מי שמתחבר עם Admin123
   const isAdmin = user.username === 'admin' || 
                   user.username === 'Admin123' || 
                   user.AgentCode === 'Admin123' ||
-                  user.agentCode === 'Admin123';
+                  user.agentCode === 'Admin123' ||
+                  user.ID === 'admin';
+  
+  console.log('User check:', {
+    username: user.username,
+    agentCode: user.agentCode || user.AgentCode,
+    id: user.ID || user.id,
+    isAdmin: isAdmin
+  });
   
   // אם זה לא admin - הצג ממשק סוכן
   if (!isAdmin) {
