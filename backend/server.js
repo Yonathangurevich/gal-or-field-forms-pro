@@ -254,6 +254,7 @@ app.get('/api/agents', authenticateToken, async (req, res) => {
 });
 
 // Create agent - Store simple password
+// Create agent - Store simple password and use AgentCode as login
 app.post('/api/agents', authenticateToken, async (req, res) => {
   try {
     if (!sheets) {
@@ -263,18 +264,18 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
     const agentData = req.body;
     console.log('Creating agent:', agentData);
     
-    // Generate ID
-    const agentId = 'AGT-' + Date.now();
+    // Use AgentCode as ID if provided, otherwise generate
+    const agentId = agentData.AgentCode || ('AGT-' + Date.now());
     
     // Create row with password in column 4
     const rowData = [
-      agentData.Name || '',                    // ID
-      agentData.Password || '',
-      agentData.AgentCode || '',  // AgentCode   // Password (simple)
+      agentId,                    // ID - use AgentCode
+      agentData.AgentCode || agentId,  // AgentCode
+      agentData.Name || '',       // Name
+      agentData.Password || '1234',   // Password (simple, stored as-is)
       agentData.Phone || '',      // Phone
       agentData.Email || '',      // Email
       agentData.Status || 'active', // Status
-      agentId
       new Date().toISOString(),   // CreatedAt
       req.user.username           // CreatedBy
     ];
@@ -287,7 +288,7 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
       agentId,
       credentials: {
         username: agentData.AgentCode,
-        password: agentData.Password
+        password: agentData.Password || '1234'
       }
     });
   } catch (error) {
