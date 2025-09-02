@@ -890,12 +890,18 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
 
 // Main Dashboard - מכריע לפי תפקיד
 function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
-  // אם זה סוכן - הצג רק טפסים
-  if (user.role === 'agent') {
+  // בדוק אם זה admin לפי AgentCode או username
+  const isAdmin = user.username === 'admin' || 
+                  user.username === 'Admin123' || 
+                  user.AgentCode === 'Admin123' ||
+                  user.agentCode === 'Admin123';
+  
+  // אם זה לא admin - הצג ממשק סוכן
+  if (!isAdmin) {
     return <AgentView user={user} onLogout={onLogout} />;
   }
   
-  // אם זה אדמין - הצג הכל
+  // אם זה admin - הצג הכל
   return <AdminDashboard user={user} onLogout={onLogout} />;
 }
 
