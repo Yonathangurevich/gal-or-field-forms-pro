@@ -268,13 +268,13 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
     
     // Create row with password in column 4
     const rowData = [
-      agentId,                    // ID
-      agentData.AgentCode || '',  // AgentCode
-      agentData.Name || '',       // Name
-      agentData.Password || '',   // Password (simple)
+      agentData.Name || '',                    // ID
+      agentData.Password || '',
+      agentData.AgentCode || '',  // AgentCode   // Password (simple)
       agentData.Phone || '',      // Phone
       agentData.Email || '',      // Email
       agentData.Status || 'active', // Status
+      agentId
       new Date().toISOString(),   // CreatedAt
       req.user.username           // CreatedBy
     ];
