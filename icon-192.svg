@@ -1,6 +1,0 @@
-<!-- Simple SVG icon placeholder for PWA -->
-<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="192" height="192" rx="24" fill="#2563eb"/>
-  <path d="M48 72h96v8H48v-8zm0 16h96v8H48v-8zm0 16h96v8H48v-8zm0 16h72v8H48v-8z" fill="white"/>
-  <path d="M64 48h64v16H64V48z" fill="white"/>
-</svg>
