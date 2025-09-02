@@ -898,19 +898,15 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
   );
 }
 
-// Main Dashboard - מכריע לפי תפקיד
+// Main Dashboard - מכריע לפי תפקיד מ-Google Sheets
 function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
-  // בדוק אם זה admin - רק מי שמתחבר עם Admin123
-  const isAdmin = user.username === 'admin' || 
-                  user.username === 'Admin123' || 
-                  user.AgentCode === 'Admin123' ||
-                  user.agentCode === 'Admin123' ||
-                  user.ID === 'admin';
+  // בדוק את התפקיד מהנתונים שחזרו מ-Google Sheets
+  const isAdmin = user.role === 'admin' || user.Role === 'admin';
   
-  console.log('User check:', {
+  console.log('User info:', {
     username: user.username,
-    agentCode: user.agentCode || user.AgentCode,
-    id: user.ID || user.id,
+    role: user.role || user.Role,
+    name: user.name || user.Name,
     isAdmin: isAdmin
   });
   
