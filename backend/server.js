@@ -1,4 +1,4 @@
-// backend/server.js - שרת מעודכן עם תמיכה ב-Role
+// backend/server.js - Enhanced with Google Forms Response Tracking
 
 const express = require('express');
 const cors = require('cors');
@@ -152,14 +152,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Login - עדכון לתמיכה ב-Role מ-Google Sheets
-// Login - תיקון הפונקציה עם debug נכון
+// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     console.log('Login attempt:', username);
 
-    // קרא את הנתונים מ-Sheet1 עם העמודה החדשה של Role
     const agents = await getSheetData('Sheet1!A:J');
     
     if (!agents || agents.length <= 1) {
@@ -167,11 +165,9 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // הכותרות בשורה הראשונה
     const headers = agents[0];
     console.log('Headers:', headers);
     
-    // מצא את האינדקסים של העמודות
     const columnIndices = {
       id: 0,        // A - ID
       role: 1,      // B - Role
@@ -185,28 +181,10 @@ app.post('/api/auth/login', async (req, res) => {
       createdBy: 9  // J - CreatedBy
     };
 
-    // DEBUG - הדפס את כל הנתונים
-    console.log('All agents:', agents);
-    console.log('Looking for username:', username);
-    agents.slice(1).forEach((row, index) => {
-      console.log(`Row ${index + 2}:`, {
-        id: row[columnIndices.id],
-        role: row[columnIndices.role],
-        agentCode: row[columnIndices.agentCode],
-        name: row[columnIndices.name],
-        password: row[columnIndices.password],
-        status: row[columnIndices.status]
-      });
-    });
-
-    // חפש את הסוכן לפי AgentCode
+    // Find agent by AgentCode
     const agent = agents.slice(1).find(row => {
       const agentCode = row[columnIndices.agentCode];
       const status = row[columnIndices.status];
-      
-      console.log(`Checking: agentCode="${agentCode}" vs username="${username}", status="${status}"`);
-      
-      // בדיקה גמישה - עם trim() למחיקת רווחים
       return agentCode && agentCode.trim() === username.trim() && status === 'active';
     });
     
@@ -217,32 +195,29 @@ app.post('/api/auth/login', async (req, res) => {
 
     console.log('Agent found:', agent);
 
-    // בדוק סיסמה
+    // Check password
     const storedPassword = agent[columnIndices.password];
-    console.log(`Password check: stored="${storedPassword}" vs entered="${password}"`);
-    
     if (password.trim() !== storedPassword.trim()) {
       console.log('Invalid password');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // קבל את ה-Role (ברירת מחדל: agent)
     const userRole = agent[columnIndices.role] || 'agent';
     console.log('User role:', userRole);
 
-    // צור JWT token
+    // Create JWT token
     const token = jwt.sign(
       { 
         id: agent[columnIndices.id],
         username: agent[columnIndices.name],
         role: userRole,
-        agentCode: agent[columnIndices.agentCode]
+        agentCode: agent[columnIndices.agentCode],
+        email: agent[columnIndices.email] || ''
       },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // החזר תגובה עם כל הפרטים
     const response = {
       success: true,
       token,
@@ -257,7 +232,7 @@ app.post('/api/auth/login', async (req, res) => {
         agentCode: agent[columnIndices.agentCode],
         AgentCode: agent[columnIndices.agentCode],
         phone: agent[columnIndices.phone],
-        email: agent[columnIndices.email]
+        email: agent[columnIndices.email] || ''
       }
     };
     
@@ -275,7 +250,7 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
 });
 
-// Get agents - עדכון לקריאה עם Role
+// Get agents
 app.get('/api/agents', authenticateToken, async (req, res) => {
   try {
     const agents = await getSheetData('Sheet1!A:J');
@@ -284,9 +259,8 @@ app.get('/api/agents', authenticateToken, async (req, res) => {
       return res.json([]);
     }
 
-    // המרה ל-JSON עם סינון Admin
     const agentsData = agents.slice(1)
-      .filter(row => row[1] !== 'admin') // סנן את ה-admin (Role בעמודה B)
+      .filter(row => row[1] !== 'admin')
       .map(row => ({
         ID: row[0] || '',
         Role: row[1] || 'agent',
@@ -306,7 +280,8 @@ app.get('/api/agents', authenticateToken, async (req, res) => {
     res.json([]);
   }
 });
-// Create agent - עדכון ליצירה עם Role
+
+// Create agent
 app.post('/api/agents', authenticateToken, async (req, res) => {
   try {
     if (!sheets) {
@@ -316,13 +291,11 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
     const agentData = req.body;
     console.log('Creating agent:', agentData);
     
-    // השתמש ב-AgentCode כ-ID או צור חדש
     const agentId = agentData.AgentCode || ('AGT-' + Date.now());
     
-    // יצירת שורה עם Role (ברירת מחדל: agent)
     const rowData = [
       agentId,                         // A - ID
-      agentData.Role || 'agent',      // B - Role (עמודה חדשה!)
+      agentData.Role || 'agent',      // B - Role
       agentData.AgentCode || agentId, // C - AgentCode
       agentData.Name || '',            // D - Name
       agentData.Password || '1234',   // E - Password
@@ -353,54 +326,52 @@ app.post('/api/agents', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete agent - עדכון לעמודת Status החדשה
-app.delete('/api/agents/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const agents = await getSheetData('Sheet1!A:J');
-    const agentIndex = agents.slice(1).findIndex(row => row[0] === id);
-    
-    if (agentIndex === -1) {
-      return res.status(404).json({ error: 'Agent not found' });
-    }
-
-    // סמן כ-DELETED בעמודת Status (עכשיו בעמודה H - אינדקס 7)
-    const range = `Sheet1!H${agentIndex + 2}`;
-    await updateSheetData(range, [['DELETED']]);
-
-    res.json({
-      success: true,
-      message: 'Agent deleted successfully'
-    });
-  } catch (error) {
-    console.error('Delete agent error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get forms
+// Get forms with enhanced response tracking
 app.get('/api/forms', authenticateToken, async (req, res) => {
   try {
     let forms = await getSheetData('Sheet2!A:J');
+    let responses = await getSheetData('Sheet3!A:H');
     
     if (!forms || forms.length <= 1) {
       return res.json([]);
     }
 
-    // Convert to JSON
-    const formsData = forms.slice(1).map(row => ({
-      ID: row[0] || '',
-      AgentID: row[1] || '',
-      FormType: row[2] || '',
-      ClientName: row[3] || '',
-      ClientPhone: row[4] || '',
-      ClientID: row[5] || '',
-      Status: row[6] || '',
-      FormURL: row[7] || '',
-      CreatedAt: row[8] || '',
-      CreatedBy: row[9] || ''
-    }));
+    // Convert forms to JSON with response tracking
+    const formsData = forms.slice(1).map(row => {
+      const formId = row[0];
+      
+      // Find if this form has been completed by checking Sheet3
+      let formStatus = row[6] || 'חדש';
+      let completedBy = [];
+      
+      if (responses && responses.length > 1) {
+        const formResponses = responses.slice(1).filter(resp => resp[1] === formId);
+        completedBy = formResponses.filter(resp => resp[3] === 'הושלם').map(resp => ({
+          agentId: resp[2],
+          completedAt: resp[5],
+          responseData: resp[7] || ''
+        }));
+        
+        // Update status if completed
+        if (completedBy.length > 0) {
+          formStatus = 'הושלם';
+        }
+      }
+      
+      return {
+        ID: formId,
+        AgentID: row[1] || '',
+        FormType: row[2] || '',
+        ClientName: row[3] || '',
+        ClientPhone: row[4] || '',
+        ClientID: row[5] || '',
+        Status: formStatus,
+        FormURL: row[7] || '',
+        CreatedAt: row[8] || '',
+        CreatedBy: row[9] || '',
+        CompletedBy: completedBy
+      };
+    });
 
     res.json(formsData);
   } catch (error) {
@@ -445,117 +416,146 @@ app.post('/api/forms', authenticateToken, async (req, res) => {
   }
 });
 
-// Update form status
-app.put('/api/forms/:id', authenticateToken, async (req, res) => {
+// Submit form response - NEW ENDPOINT
+app.post('/api/forms/:id/submit', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
-    
-    const forms = await getSheetData('Sheet2!A:J');
-    const formIndex = forms.slice(1).findIndex(row => row[0] === id);
-    
-    if (formIndex === -1) {
-      return res.status(404).json({ error: 'Form not found' });
-    }
-
-    // Update status
-    if (updateData.Status) {
-      const range = `Sheet2!G${formIndex + 2}`;
-      await updateSheetData(range, [[updateData.Status]]);
-    }
-
-    res.json({
-      success: true,
-      message: 'Form updated successfully'
-    });
-  } catch (error) {
-    console.error('Update form error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/forms/:id/start', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const agentId = req.user.id || req.user.ID;
+    const { responseData } = req.body;
+    const agentId = req.user.agentCode;
+    const agentEmail = req.user.email || `${req.user.agentCode}@fieldforms.com`;
     const timestamp = new Date().toISOString();
     
-    console.log(`Agent ${agentId} starting form ${id}`);
+    console.log(`Agent ${agentId} submitting form ${id}`);
     
-    // הוסף רשומה ל-Sheet3 (FormResponses)
+    // Add response record to Sheet3
     const responseId = 'RESP-' + Date.now();
     const responseRow = [
-      responseId,     // A: ResponseID
-      id,            // B: FormID
-      agentId,       // C: AgentID
-      'בטיפול',     // D: Status
-      timestamp,     // E: StartedAt
-      '',           // F: CompletedAt (ריק כרגע)
-      ''            // G: ResponseURL (ריק כרגע)
+      responseId,              // A: ResponseID
+      id,                      // B: FormID
+      agentId,                 // C: AgentID
+      'הושלם',                 // D: Status
+      timestamp,               // E: StartedAt
+      timestamp,               // F: CompletedAt
+      agentEmail,              // G: AgentEmail
+      JSON.stringify(responseData || {}) // H: ResponseData
     ];
     
-    await appendSheetData('Sheet3!A:G', [responseRow]);
+    await appendSheetData('Sheet3!A:H', [responseRow]);
     console.log('Added response tracking to Sheet3');
     
-    // עדכן את הסטטוס בטופס המקורי ב-Sheet2
+    // Update form status in Sheet2
     const forms = await getSheetData('Sheet2!A:J');
     const formIndex = forms.slice(1).findIndex(row => row[0] === id);
     
     if (formIndex !== -1) {
       const range = `Sheet2!G${formIndex + 2}`;
-      await updateSheetData(range, [['בטיפול']]);
+      await updateSheetData(range, [['הושלם']]);
       console.log('Updated form status in Sheet2');
     }
     
     res.json({
       success: true,
-      message: 'Form started',
+      message: 'Form submitted successfully',
       responseId
     });
   } catch (error) {
-    console.error('Error starting form:', error);
+    console.error('Error submitting form:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Get form completion status for admin dashboard
+app.get('/api/forms/status', authenticateToken, async (req, res) => {
+  try {
+    const agents = await getSheetData('Sheet1!A:J');
+    const forms = await getSheetData('Sheet2!A:J');
+    const responses = await getSheetData('Sheet3!A:H');
+    
+    // Build status report
+    const statusReport = [];
+    
+    if (forms && forms.length > 1) {
+      forms.slice(1).forEach(form => {
+        const formId = form[0];
+        const formType = form[2];
+        const formUrl = form[7];
+        
+        // Find all agents who should complete this form
+        const activeAgents = agents.slice(1).filter(agent => agent[7] === 'active');
+        
+        activeAgents.forEach(agent => {
+          const agentId = agent[2]; // AgentCode
+          const agentName = agent[3]; // Name
+          
+          // Check if agent completed this form
+          let completed = false;
+          let completionDate = null;
+          
+          if (responses && responses.length > 1) {
+            const agentResponse = responses.slice(1).find(resp => 
+              resp[1] === formId && resp[2] === agentId && resp[3] === 'הושלם'
+            );
+            
+            if (agentResponse) {
+              completed = true;
+              completionDate = agentResponse[5];
+            }
+          }
+          
+          statusReport.push({
+            formId,
+            formType,
+            formUrl,
+            agentId,
+            agentName,
+            status: completed ? 'הושלם' : 'ממתין',
+            completionDate
+          });
+        });
+      });
+    }
+    
+    res.json(statusReport);
+  } catch (error) {
+    console.error('Error getting form status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get agent's pending forms
 app.get('/api/forms/agent/:agentId', authenticateToken, async (req, res) => {
   try {
     const { agentId } = req.params;
     
-    // קרא את כל הטפסים
     let forms = await getSheetData('Sheet2!A:J');
-    
-    // קרא את התגובות מ-Sheet3
-    const responses = await getSheetData('Sheet3!A:G');
+    const responses = await getSheetData('Sheet3!A:H');
     
     if (!forms || forms.length <= 1) {
       return res.json([]);
     }
     
-    // סנן טפסים של הסוכן הספציפי
-    const agentForms = forms.slice(1)
-      .filter(row => row[1] === agentId) // AgentID בעמודה B
-      .map(row => ({
-        ID: row[0] || '',
-        AgentID: row[1] || '',
-        FormType: row[2] || '',
-        ClientName: row[3] || '',
-        ClientPhone: row[4] || '',
-        ClientID: row[5] || '',
-        Status: row[6] || '',
-        FormURL: row[7] || '',
-        CreatedAt: row[8] || '',
-        CreatedBy: row[9] || ''
-      }));
+    // Get all forms
+    const allForms = forms.slice(1).map(row => ({
+      ID: row[0] || '',
+      AgentID: row[1] || '',
+      FormType: row[2] || '',
+      ClientName: row[3] || '',
+      ClientPhone: row[4] || '',
+      ClientID: row[5] || '',
+      Status: row[6] || '',
+      FormURL: row[7] || '',
+      CreatedAt: row[8] || '',
+      CreatedBy: row[9] || ''
+    }));
     
-    // בדוק אילו טפסים כבר הושלמו על ידי הסוכן
+    // Check which forms were completed by this agent
     const completedFormIds = responses.slice(1)
       .filter(row => row[2] === agentId && row[3] === 'הושלם')
-      .map(row => row[1]); // FormID
+      .map(row => row[1]);
     
-    // החזר רק טפסים שלא הושלמו
-    const pendingForms = agentForms.filter(form => 
-      !completedFormIds.includes(form.ID)
+    // Return only forms not yet completed by this agent
+    const pendingForms = allForms.filter(form => 
+      !completedFormIds.includes(form.ID) && form.Status !== 'הושלם'
     );
     
     console.log(`Agent ${agentId}: ${pendingForms.length} pending forms`);
@@ -573,21 +573,17 @@ async function startServer() {
   
   app.listen(PORT, () => {
     console.log(`
-╔════════════════════════════════════════╗
+╔══════════════════════════════════════╗
 ║    Field Forms Pro Backend Server     ║
-╠════════════════════════════════════════╣
+╠══════════════════════════════════════╣
 ║  🚀 Server: http://localhost:${PORT}     ║
 ║  📊 Google Sheets: ${initialized ? 'Connected ✅' : 'Failed ❌'}      ║
-╠════════════════════════════════════════╣
-║  Login Credentials:                    ║
-║  Admin: use AgentCode from Sheet       ║
-║  Agent: [AgentCode] / [Password]       ║
-╠════════════════════════════════════════╣
-║  Sheet Structure (Sheet1):             ║
-║  A:ID | B:Role | C:AgentCode | D:Name  ║
-║  E:Password | F:Phone | G:Email        ║
-║  H:Status | I:CreatedAt | J:CreatedBy  ║
-╚════════════════════════════════════════╝
+╠══════════════════════════════════════╣
+║  Sheet Structure:                      ║
+║  Sheet1: Agents data                   ║
+║  Sheet2: Forms data                    ║
+║  Sheet3: Response tracking             ║
+╚══════════════════════════════════════╝
     `);
     
     if (!initialized) {
