@@ -337,41 +337,43 @@ app.get('/api/forms', authenticateToken, async (req, res) => {
     }
 
     // Convert forms to JSON with response tracking
-    const formsData = forms.slice(1).map(row => {
-      const formId = row[0];
-      
-      // Find if this form has been completed by checking Sheet3
-      let formStatus = row[6] || 'חדש';
-      let completedBy = [];
-      
-      if (responses && responses.length > 1) {
-        const formResponses = responses.slice(1).filter(resp => resp[1] === formId);
-        completedBy = formResponses.filter(resp => resp[3] === 'הושלם').map(resp => ({
-          agentId: resp[2],
-          completedAt: resp[5],
-          responseData: resp[7] || ''
-        }));
+    const formsData = forms.slice(1)
+      .filter(row => row[6] !== 'נמחק') // Filter out deleted forms
+      .map(row => {
+        const formId = row[0];
         
-        // Update status if completed
-        if (completedBy.length > 0) {
-          formStatus = 'הושלם';
+        // Find if this form has been completed by checking Sheet3
+        let formStatus = row[6] || 'חדש';
+        let completedBy = [];
+        
+        if (responses && responses.length > 1) {
+          const formResponses = responses.slice(1).filter(resp => resp[1] === formId);
+          completedBy = formResponses.filter(resp => resp[3] === 'הושלם').map(resp => ({
+            agentId: resp[2],
+            completedAt: resp[5],
+            responseData: resp[7] || ''
+          }));
+          
+          // Update status if completed
+          if (completedBy.length > 0) {
+            formStatus = 'הושלם';
+          }
         }
-      }
-      
-      return {
-        ID: formId,
-        AgentID: row[1] || '',
-        FormType: row[2] || '',
-        ClientName: row[3] || '',
-        ClientPhone: row[4] || '',
-        ClientID: row[5] || '',
-        Status: formStatus,
-        FormURL: row[7] || '',
-        CreatedAt: row[8] || '',
-        CreatedBy: row[9] || '',
-        CompletedBy: completedBy
-      };
-    });
+        
+        return {
+          ID: formId,
+          AgentID: row[1] || '',
+          FormType: row[2] || '',
+          ClientName: row[3] || '',
+          ClientPhone: row[4] || '',
+          ClientID: row[5] || '',
+          Status: formStatus,
+          FormURL: row[7] || '',
+          CreatedAt: row[8] || '',
+          CreatedBy: row[9] || '',
+          CompletedBy: completedBy
+        };
+      });
 
     res.json(formsData);
   } catch (error) {
