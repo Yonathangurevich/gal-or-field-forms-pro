@@ -956,9 +956,19 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                               onClick={async () => {
                                 if (confirm('האם למחוק את הטופס מהרשימה?')) {
                                   try {
-                                    await api.call(`/forms/${form.ID}`, {
-                                      method: 'DELETE'
-                                    });
+                                    // Try DELETE first, fallback to PUT
+                                    try {
+                                      await api.call(`/forms/${form.ID}`, {
+                                        method: 'DELETE'
+                                      });
+                                    } catch (deleteError) {
+                                      // If DELETE fails, use PUT
+                                      await api.call(`/forms/${form.ID}`, {
+                                        method: 'PUT',
+                                        body: JSON.stringify({ delete: true })
+                                      });
+                                    }
+                                    
                                     await loadData();
                                     showNotification('טופס נמחק', 'הטופס הוסר מהרשימה');
                                   } catch (error: any) {
