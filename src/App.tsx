@@ -23,6 +23,19 @@ function showNotification(title: string, body: string) {
   }
 }
 
+// Register service worker for PWA
+async function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('Service Worker registered:', registration);
+      return registration;
+    } catch (error) {
+      console.error('Service Worker registration failed:', error);
+    }
+  }
+}
+
 // Simple API Service
 const api = {
   token: localStorage.getItem('authToken'),
@@ -212,7 +225,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
   );
 }
 
-// Enhanced Agent View with form submission tracking
+// Agent View
 function AgentView({ user, onLogout }: any) {
   const [forms, setForms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -232,11 +245,9 @@ function AgentView({ user, onLogout }: any) {
   
   const loadAgentForms = async () => {
     try {
-      // Get forms assigned to this agent
       const response = await api.call(`/forms/agent/${user.agentCode || user.id}`);
       setForms(response);
       
-      // Show notification for new forms
       const newForms = response.filter((f: any) => f.Status === 'חדש');
       if (newForms.length > 0 && notificationsEnabled) {
         showNotification('טופס חדש!', `יש לך ${newForms.length} טפסים חדשים למילוי`);
@@ -249,7 +260,6 @@ function AgentView({ user, onLogout }: any) {
   };
 
   const handleFormClick = async (form: any) => {
-    // Track form start
     await api.call(`/forms/${form.ID}/submit`, {
       method: 'POST',
       body: JSON.stringify({
@@ -257,10 +267,7 @@ function AgentView({ user, onLogout }: any) {
       })
     });
 
-    // Open form in new tab
     window.open(form.FormURL, '_blank');
-    
-    // Reload forms after a delay
     setTimeout(loadAgentForms, 3000);
   };
   
@@ -373,7 +380,7 @@ function AgentView({ user, onLogout }: any) {
   );
 }
 
-// Enhanced Admin Dashboard with form completion tracking
+// Admin Dashboard
 function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<'agents' | 'forms' | 'status'>('status');
   const [agents, setAgents] = useState<any[]>([]);
@@ -394,6 +401,7 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
   useEffect(() => {
     loadData();
     setupNotifications();
+    registerServiceWorker();
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -447,7 +455,12 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
     const formUrl = prompt('הכנס קישור לטופס Google Forms:');
     if (!formUrl) return;
 
-    const activeAgents = agents.filter(a => a.Status === 'active');
+    const activeAgents = agents.filter(a => 
+      a.Status === 'active' && 
+      a.Role !== 'admin' && 
+      a.AgentCode !== 'admin' && 
+      a.AgentCode !== 'Admin123'
+    );
     
     if (activeAgents.length === 0) {
       alert('אין סוכנים פעילים במערכת! צור סוכנים תחילה.');
@@ -455,19 +468,16 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
     }
 
     try {
-      // Create form for all active agents
-      for (const agent of activeAgents) {
-        await api.call('/forms', {
-          method: 'POST',
-          body: JSON.stringify({
-            AgentID: agent.ID,
-            FormType: 'Google Form',
-            FormURL: formUrl,
-            Status: 'חדש',
-            ClientName: 'טופס כללי'
-          })
-        });
-      }
+      await api.call('/forms', {
+        method: 'POST',
+        body: JSON.stringify({
+          sendToAll: true,
+          FormType: 'Google Form',
+          FormURL: formUrl,
+          Status: 'חדש',
+          ClientName: 'טופס כללי'
+        })
+      });
       
       showNotification('טופס נשלח', `נשלח ל-${activeAgents.length} סוכנים`);
       alert(`הטופס נשלח ל-${activeAgents.length} סוכנים פעילים!`);
@@ -503,7 +513,6 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
       };
     }
     
-    // Add agent only if not admin
     if (item.agentName !== 'admin' && item.agentId !== 'admin' && item.agentId !== 'Admin123') {
       acc[item.formId].agents.push({
         agentId: item.agentId,
@@ -512,7 +521,6 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
         completionDate: item.completionDate
       });
       
-      // Update counts
       acc[item.formId].totalAgents++;
       if (item.status === 'הושלם') {
         acc[item.formId].completedAgents++;
@@ -615,19 +623,34 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
               marginBottom: '20px'
             }}>
               <h2 style={{ margin: 0 }}>סטטוס מילוי טפסים</h2>
-              <button
-                onClick={handleShareForm}
-                style={{
-                  padding: '10px 20px',
-                  background: '#34a853',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                שלח טופס חדש לכולם
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => window.open('https://forms.google.com/create', '_blank')}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#4285f4',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  צור טופס ב-Google Forms
+                </button>
+                <button
+                  onClick={handleShareForm}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#34a853',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  שלח טופס חדש לכולם
+                </button>
+              </div>
             </div>
 
             {Object.keys(formStatusGroups).length === 0 ? (
@@ -649,36 +672,40 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                   marginBottom: '20px',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.08)'
                 }}>
-                  <h3 style={{ margin: '0 0 15px' }}>
-                    {group.formType} - {group.formId}
-                  </h3>
-                  
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: '10px',
-                    marginBottom: '15px'
-                  }}>
-                    <div style={{
-                      padding: '15px',
-                      background: '#e8f5e9',
-                      borderRadius: '8px'
-                    }}>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>
-                        {group.agents.filter((a: any) => a.status === 'הושלם').length}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: '0 0 15px' }}>
+                        {group.formType} - {group.formId}
+                      </h3>
+                      
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        gap: '10px',
+                        marginBottom: '15px'
+                      }}>
+                        <div style={{
+                          padding: '15px',
+                          background: '#e8f5e9',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>
+                            {group.agents.filter((a: any) => a.status === 'הושלם').length}
+                          </div>
+                          <div style={{ color: '#666', marginTop: '5px' }}>הושלמו</div>
+                        </div>
+                        
+                        <div style={{
+                          padding: '15px',
+                          background: '#fff3e0',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff9800' }}>
+                            {group.agents.filter((a: any) => a.status === 'ממתין').length}
+                          </div>
+                          <div style={{ color: '#666', marginTop: '5px' }}>ממתינים</div>
+                        </div>
                       </div>
-                      <div style={{ color: '#666', marginTop: '5px' }}>הושלמו</div>
-                    </div>
-                    
-                    <div style={{
-                      padding: '15px',
-                      background: '#fff3e0',
-                      borderRadius: '8px'
-                    }}>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff9800' }}>
-                        {group.agents.filter((a: any) => a.status === 'ממתין').length}
-                      </div>
-                      <div style={{ color: '#666', marginTop: '5px' }}>ממתינים</div>
                     </div>
                   </div>
                   
@@ -951,30 +978,23 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                             form.CompletedBy.length + ' סוכנים' : '-'}
                         </td>
                         <td style={{ padding: '12px', borderTop: '1px solid #f0f0f0' }}>
-                          {form.Status === 'הושלם' && (
+                          {form.FormURL && (
                             <button
-                              onClick={async () => {
-                                if (confirm('האם למחוק את הטופס מהרשימה?')) {
-                                  try {
-                                    await api.call(`/forms/${form.ID}`, {
-                                      method: 'PUT',
-                                      body: JSON.stringify({ 
-                                        Status: 'נמחק', 
-                                        delete: true 
-                                      })
-                                    });
-                                    
-                                    await loadData();
-                                    showNotification('טופס נמחק', 'הטופס הוסר מהרשימה');
-                                  } catch (error: any) {
-                                    console.error('Delete error:', error);
-                                    alert('שגיאה במחיקת הטופס. בדוק את הלוגים ב-Render.');
-                                  }
+                              onClick={() => {
+                                const formIdMatch = form.FormURL.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/);
+                                if (formIdMatch) {
+                                  const googleFormId = formIdMatch[1];
+                                  window.open(
+                                    `https://docs.google.com/forms/d/${googleFormId}/edit#responses`,
+                                    '_blank'
+                                  );
+                                } else {
+                                  window.open(form.FormURL, '_blank');
                                 }
                               }}
                               style={{
                                 padding: '4px 12px',
-                                background: '#f44336',
+                                background: '#4285f4',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '4px',
@@ -982,7 +1002,7 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                                 fontSize: '12px'
                               }}
                             >
-                              מחק
+                              תשובות
                             </button>
                           )}
                         </td>
@@ -1020,6 +1040,8 @@ export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
+    registerServiceWorker();
+    
     const checkAuth = async () => {
       const savedUser = localStorage.getItem('user');
       const token = localStorage.getItem('authToken');
