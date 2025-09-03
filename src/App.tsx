@@ -497,15 +497,28 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
         formId: item.formId,
         formType: item.formType,
         formUrl: item.formUrl,
-        agents: []
+        agents: [],
+        totalAgents: 0,
+        completedAgents: 0
       };
     }
-    acc[item.formId].agents.push({
-      agentId: item.agentId,
-      agentName: item.agentName,
-      status: item.status,
-      completionDate: item.completionDate
-    });
+    
+    // Add agent only if not admin
+    if (item.agentName !== 'admin' && item.agentId !== 'admin' && item.agentId !== 'Admin123') {
+      acc[item.formId].agents.push({
+        agentId: item.agentId,
+        agentName: item.agentName,
+        status: item.status,
+        completionDate: item.completionDate
+      });
+      
+      // Update counts
+      acc[item.formId].totalAgents++;
+      if (item.status === 'הושלם') {
+        acc[item.formId].completedAgents++;
+      }
+    }
+    
     return acc;
   }, {});
 
