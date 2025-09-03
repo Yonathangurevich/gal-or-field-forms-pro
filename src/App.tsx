@@ -260,20 +260,12 @@ function AgentView({ user, onLogout }: any) {
   const loadAgentForms = async () => {
     try {
       const response = await api.call('/forms');
-      // סנן רק טפסים של הסוכן הנוכחי - בדוק מול כל השדות האפשריים
-      const myForms = response.filter((f: any) => {
-        // בדוק את כל האפשרויות של ID הסוכן
-        return f.AgentID === user.username || 
-               f.AgentID === user.agentCode || 
-               f.AgentID === user.AgentCode ||
-               f.AgentID === user.id ||
-               f.AgentID === user.ID ||
-               f.AgentID === user.Id;
-      });
-      
-      console.log('User info:', user);
-      console.log('Found forms for agent:', myForms.length);
-      
+      // סנן רק טפסים של הסוכן הנוכחי
+      const myForms = response.filter((f: any) => 
+        f.AgentID === user.agentCode || 
+        f.AgentID === user.id ||
+        f.AgentID === user.ID
+      );
       setForms(myForms);
       
       // הודעה על טפסים חדשים
@@ -898,17 +890,13 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
   );
 }
 
-// Main Dashboard - מכריע לפי תפקיד מ-Google Sheets
+// Main Dashboard - מכריע לפי תפקיד
 function Dashboard({ user, onLogout }: { user: any; onLogout: () => void }) {
-  // בדוק את התפקיד מהנתונים שחזרו מ-Google Sheets
-  const isAdmin = user.role === 'admin' || user.Role === 'admin';
-  
-  console.log('User info:', {
-    username: user.username,
-    role: user.role || user.Role,
-    name: user.name || user.Name,
-    isAdmin: isAdmin
-  });
+  // בדוק אם זה admin לפי AgentCode או username
+  const isAdmin = user.username === 'admin' || 
+                  user.username === 'Admin123' || 
+                  user.AgentCode === 'Admin123' ||
+                  user.agentCode === 'Admin123';
   
   // אם זה לא admin - הצג ממשק סוכן
   if (!isAdmin) {
