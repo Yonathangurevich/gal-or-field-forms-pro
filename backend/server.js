@@ -284,19 +284,21 @@ app.get('/api/agents', authenticateToken, async (req, res) => {
       return res.json([]);
     }
 
-    // המרה ל-JSON עם העמודה החדשה של Role
-    const agentsData = agents.slice(1).map(row => ({
-      ID: row[0] || '',
-      Role: row[1] || 'agent', // עמודה חדשה!
-      AgentCode: row[2] || '',
-      Name: row[3] || '',
-      Password: row[4] || '',
-      Phone: row[5] || '',
-      Email: row[6] || '',
-      Status: row[7] || 'active',
-      CreatedAt: row[8] || '',
-      CreatedBy: row[9] || ''
-    }));
+    // המרה ל-JSON עם סינון Admin
+    const agentsData = agents.slice(1)
+      .filter(row => row[1] !== 'admin') // סנן את ה-admin (Role בעמודה B)
+      .map(row => ({
+        ID: row[0] || '',
+        Role: row[1] || 'agent',
+        AgentCode: row[2] || '',
+        Name: row[3] || '',
+        Password: row[4] || '',
+        Phone: row[5] || '',
+        Email: row[6] || '',
+        Status: row[7] || 'active',
+        CreatedAt: row[8] || '',
+        CreatedBy: row[9] || ''
+      }));
 
     res.json(agentsData);
   } catch (error) {
@@ -304,7 +306,6 @@ app.get('/api/agents', authenticateToken, async (req, res) => {
     res.json([]);
   }
 });
-
 // Create agent - עדכון ליצירה עם Role
 app.post('/api/agents', authenticateToken, async (req, res) => {
   try {
@@ -470,6 +471,98 @@ app.put('/api/forms/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Update form error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/forms/:id/start', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const agentId = req.user.id || req.user.ID;
+    const timestamp = new Date().toISOString();
+    
+    console.log(`Agent ${agentId} starting form ${id}`);
+    
+    // הוסף רשומה ל-Sheet3 (FormResponses)
+    const responseId = 'RESP-' + Date.now();
+    const responseRow = [
+      responseId,     // A: ResponseID
+      id,            // B: FormID
+      agentId,       // C: AgentID
+      'בטיפול',     // D: Status
+      timestamp,     // E: StartedAt
+      '',           // F: CompletedAt (ריק כרגע)
+      ''            // G: ResponseURL (ריק כרגע)
+    ];
+    
+    await appendSheetData('Sheet3!A:G', [responseRow]);
+    console.log('Added response tracking to Sheet3');
+    
+    // עדכן את הסטטוס בטופס המקורי ב-Sheet2
+    const forms = await getSheetData('Sheet2!A:J');
+    const formIndex = forms.slice(1).findIndex(row => row[0] === id);
+    
+    if (formIndex !== -1) {
+      const range = `Sheet2!G${formIndex + 2}`;
+      await updateSheetData(range, [['בטיפול']]);
+      console.log('Updated form status in Sheet2');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Form started',
+      responseId
+    });
+  } catch (error) {
+    console.error('Error starting form:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/forms/agent/:agentId', authenticateToken, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    
+    // קרא את כל הטפסים
+    let forms = await getSheetData('Sheet2!A:J');
+    
+    // קרא את התגובות מ-Sheet3
+    const responses = await getSheetData('Sheet3!A:G');
+    
+    if (!forms || forms.length <= 1) {
+      return res.json([]);
+    }
+    
+    // סנן טפסים של הסוכן הספציפי
+    const agentForms = forms.slice(1)
+      .filter(row => row[1] === agentId) // AgentID בעמודה B
+      .map(row => ({
+        ID: row[0] || '',
+        AgentID: row[1] || '',
+        FormType: row[2] || '',
+        ClientName: row[3] || '',
+        ClientPhone: row[4] || '',
+        ClientID: row[5] || '',
+        Status: row[6] || '',
+        FormURL: row[7] || '',
+        CreatedAt: row[8] || '',
+        CreatedBy: row[9] || ''
+      }));
+    
+    // בדוק אילו טפסים כבר הושלמו על ידי הסוכן
+    const completedFormIds = responses.slice(1)
+      .filter(row => row[2] === agentId && row[3] === 'הושלם')
+      .map(row => row[1]); // FormID
+    
+    // החזר רק טפסים שלא הושלמו
+    const pendingForms = agentForms.filter(form => 
+      !completedFormIds.includes(form.ID)
+    );
+    
+    console.log(`Agent ${agentId}: ${pendingForms.length} pending forms`);
+    res.json(pendingForms);
+  } catch (error) {
+    console.error('Get agent forms error:', error);
+    res.json([]);
   }
 });
 
