@@ -962,6 +962,7 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                                     await loadData();
                                     showNotification('טופס נמחק', 'הטופס הוסר מהרשימה');
                                   } catch (error: any) {
+                                    console.error('Delete error:', error);
                                     alert('שגיאה במחיקת הטופס: ' + error.message);
                                   }
                                 }
