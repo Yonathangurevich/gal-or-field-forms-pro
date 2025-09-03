@@ -153,6 +153,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Login - עדכון לתמיכה ב-Role מ-Google Sheets
+// Login - תיקון הפונקציה עם debug נכון
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -171,10 +172,9 @@ app.post('/api/auth/login', async (req, res) => {
     console.log('Headers:', headers);
     
     // מצא את האינדקסים של העמודות
-    // המבנה החדש: ID | Role | AgentCode | Name | Password | Phone | Email | Status | CreatedAt | CreatedBy
     const columnIndices = {
       id: 0,        // A - ID
-      role: 1,      // B - Role (עמודה חדשה!)
+      role: 1,      // B - Role
       agentCode: 2, // C - AgentCode
       name: 3,      // D - Name
       password: 4,  // E - Password
@@ -185,11 +185,29 @@ app.post('/api/auth/login', async (req, res) => {
       createdBy: 9  // J - CreatedBy
     };
 
+    // DEBUG - הדפס את כל הנתונים
+    console.log('All agents:', agents);
+    console.log('Looking for username:', username);
+    agents.slice(1).forEach((row, index) => {
+      console.log(`Row ${index + 2}:`, {
+        id: row[columnIndices.id],
+        role: row[columnIndices.role],
+        agentCode: row[columnIndices.agentCode],
+        name: row[columnIndices.name],
+        password: row[columnIndices.password],
+        status: row[columnIndices.status]
+      });
+    });
+
     // חפש את הסוכן לפי AgentCode
     const agent = agents.slice(1).find(row => {
       const agentCode = row[columnIndices.agentCode];
       const status = row[columnIndices.status];
-      return agentCode === username && status === 'active';
+      
+      console.log(`Checking: agentCode="${agentCode}" vs username="${username}", status="${status}"`);
+      
+      // בדיקה גמישה - עם trim() למחיקת רווחים
+      return agentCode && agentCode.trim() === username.trim() && status === 'active';
     });
     
     if (!agent) {
@@ -197,9 +215,13 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    console.log('Agent found:', agent);
+
     // בדוק סיסמה
     const storedPassword = agent[columnIndices.password];
-    if (password !== storedPassword) {
+    console.log(`Password check: stored="${storedPassword}" vs entered="${password}"`);
+    
+    if (password.trim() !== storedPassword.trim()) {
       console.log('Invalid password');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -213,7 +235,7 @@ app.post('/api/auth/login', async (req, res) => {
       { 
         id: agent[columnIndices.id],
         username: agent[columnIndices.name],
-        role: userRole, // כולל את ה-Role!
+        role: userRole,
         agentCode: agent[columnIndices.agentCode]
       },
       JWT_SECRET,
@@ -221,40 +243,32 @@ app.post('/api/auth/login', async (req, res) => {
     );
 
     // החזר תגובה עם כל הפרטים
-    return res.json({
+    const response = {
       success: true,
       token,
       user: { 
         id: agent[columnIndices.id],
-        ID: agent[columnIndices.id], // לתאימות
+        ID: agent[columnIndices.id],
         username: agent[columnIndices.name],
         name: agent[columnIndices.name],
-        Name: agent[columnIndices.name], // לתאימות
-        role: userRole, // חשוב!
-        Role: userRole, // לתאימות
+        Name: agent[columnIndices.name],
+        role: userRole,
+        Role: userRole,
         agentCode: agent[columnIndices.agentCode],
-        AgentCode: agent[columnIndices.agentCode], // לתאימות
+        AgentCode: agent[columnIndices.agentCode],
         phone: agent[columnIndices.phone],
         email: agent[columnIndices.email]
       }
-    });
+    };
+    
+    console.log('Login successful, returning:', response);
+    return res.json(response);
 
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: error.message });
   }
-
-  // ב-login endpoint, אחרי שקורא את הנתונים:
-  console.log('All agents:', agents);
-  console.log('Looking for username:', username);
-  agents.slice(1).forEach((row, index) => {
-  console.log(`Row ${index + 2}:`, {
-     agentCode: row[columnIndices.agentCode],
-     password: row[columnIndices.password],
-     role: row[columnIndices.role]
-  });
 });
-
 
 // Verify token
 app.get('/api/auth/verify', authenticateToken, (req, res) => {
