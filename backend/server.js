@@ -392,6 +392,44 @@ app.post('/api/forms', authenticateToken, async (req, res) => {
     const formData = req.body;
     const formId = 'FRM-' + Date.now();
     
+    // אם זה שליחה לכל הסוכנים, קבל את רשימת הסוכנים הפעילים (ללא admin)
+    if (formData.sendToAll) {
+      const agents = await getSheetData('Sheet1!A:J');
+      const activeAgents = agents.slice(1).filter(agent => {
+        const status = agent[7];
+        const role = agent[1] || '';
+        const agentCode = agent[2] || '';
+        return status === 'active' && 
+               role.toLowerCase() !== 'admin' && 
+               agentCode.toLowerCase() !== 'admin' && 
+               agentCode.toLowerCase() !== 'admin123';
+      });
+      
+      // יצירת טופס לכל סוכן פעיל (ללא admin)
+      for (const agent of activeAgents) {
+        const rowData = [
+          'FRM-' + Date.now() + '-' + agent[0],
+          agent[0], // Agent ID
+          formData.FormType || 'Google Form',
+          formData.ClientName || '',
+          formData.ClientPhone || '',
+          formData.ClientID || '',
+          formData.Status || 'חדש',
+          formData.FormURL || '',
+          new Date().toISOString(),
+          req.user.username
+        ];
+        await appendSheetData('Sheet2!A:J', [rowData]);
+      }
+      
+      return res.json({
+        success: true,
+        message: `Form created for ${activeAgents.length} agents`,
+        count: activeAgents.length
+      });
+    }
+    
+    // יצירת טופס בודד
     const rowData = [
       formId,
       formData.AgentID || '',
