@@ -863,19 +863,34 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
               marginBottom: '20px'
             }}>
               <h2 style={{ margin: 0 }}>טפסים</h2>
-              <button
-                onClick={handleShareForm}
-                style={{
-                  padding: '10px 20px',
-                  background: '#34a853',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                שלח טופס לסוכנים
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => window.open('https://forms.google.com/create', '_blank')}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#4285f4',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  צור טופס ב-Google Forms
+                </button>
+                <button
+                  onClick={handleShareForm}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#34a853',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  שלח טופס לסוכנים
+                </button>
+              </div>
             </div>
 
             {forms.length === 0 ? (
@@ -903,6 +918,7 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                       <th style={{ padding: '12px', textAlign: 'right' }}>סוכן</th>
                       <th style={{ padding: '12px', textAlign: 'right' }}>סטטוס</th>
                       <th style={{ padding: '12px', textAlign: 'right' }}>הושלם ע"י</th>
+                      <th style={{ padding: '12px', textAlign: 'right' }}>פעולות</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -933,6 +949,36 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                         <td style={{ padding: '12px', borderTop: '1px solid #f0f0f0' }}>
                           {form.CompletedBy?.length > 0 ? 
                             form.CompletedBy.length + ' סוכנים' : '-'}
+                        </td>
+                        <td style={{ padding: '12px', borderTop: '1px solid #f0f0f0' }}>
+                          {form.Status === 'הושלם' && (
+                            <button
+                              onClick={async () => {
+                                if (confirm('האם למחוק את הטופס מהרשימה?')) {
+                                  try {
+                                    await api.call(`/forms/${form.ID}`, {
+                                      method: 'DELETE'
+                                    });
+                                    await loadData();
+                                    showNotification('טופס נמחק', 'הטופס הוסר מהרשימה');
+                                  } catch (error: any) {
+                                    alert('שגיאה במחיקת הטופס: ' + error.message);
+                                  }
+                                }
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                background: '#f44336',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                              }}
+                            >
+                              מחק
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
