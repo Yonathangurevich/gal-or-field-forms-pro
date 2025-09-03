@@ -951,12 +951,25 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                             form.CompletedBy.length + ' סוכנים' : '-'}
                         </td>
                         <td style={{ padding: '12px', borderTop: '1px solid #f0f0f0' }}>
-                          {(form.Status === 'הושלם' || hiddenForms.includes(form.ID)) && (
+                          {form.Status === 'הושלם' && (
                             <button
-                              onClick={() => {
-                                if (confirm('האם להסתיר את הטופס מהרשימה?')) {
-                                  hideForm(form.ID);
-                                  showNotification('טופס הוסתר', 'הטופס הוסר מהתצוגה');
+                              onClick={async () => {
+                                if (confirm('האם למחוק את הטופס מהרשימה?')) {
+                                  try {
+                                    await api.call(`/forms/${form.ID}`, {
+                                      method: 'PUT',
+                                      body: JSON.stringify({ 
+                                        Status: 'נמחק', 
+                                        delete: true 
+                                      })
+                                    });
+                                    
+                                    await loadData();
+                                    showNotification('טופס נמחק', 'הטופס הוסר מהרשימה');
+                                  } catch (error: any) {
+                                    console.error('Delete error:', error);
+                                    alert('שגיאה במחיקת הטופס. בדוק את הלוגים ב-Render.');
+                                  }
                                 }
                               }}
                               style={{
@@ -969,7 +982,7 @@ function AdminDashboard({ user, onLogout }: { user: any; onLogout: () => void })
                                 fontSize: '12px'
                               }}
                             >
-                              הסתר
+                              מחק
                             </button>
                           )}
                         </td>
