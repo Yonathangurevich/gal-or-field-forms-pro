@@ -243,7 +243,18 @@ app.post('/api/auth/login', async (req, res) => {
     console.error('Login error:', error);
     res.status(500).json({ error: error.message });
   }
+
+  // ב-login endpoint, אחרי שקורא את הנתונים:
+  console.log('All agents:', agents);
+  console.log('Looking for username:', username);
+  agents.slice(1).forEach((row, index) => {
+  console.log(`Row ${index + 2}:`, {
+     agentCode: row[columnIndices.agentCode],
+     password: row[columnIndices.password],
+     role: row[columnIndices.role]
+  });
 });
+
 
 // Verify token
 app.get('/api/auth/verify', authenticateToken, (req, res) => {
